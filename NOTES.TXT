@@ -1,0 +1,43 @@
+# API Scanner - Core Security Concepts Summary
+
+## Rate Limiting
+- **What**: Controls requests per time window (e.g., 100/min per IP). Returns 429 if exceeded.
+- **Why**: Prevents DDoS (Mirai 2016), credential stuffing, scraping (Venmo 2020), brute force, cost attacks.
+- **Detection**: `rate_limit_scanner.py` sends 20 requests, checks headers (X-RateLimit-Limit/Remaining/Reset), 429 status.
+  - States: No limits, headers only, active enforcement.
+- **Attacks**: IP spoofing (X-Forwarded-For), distributed bots, endpoint variations (/api vs /API).
+- **Defenses**: Multi-layer (CDN, API gateway, app-level with SlowAPI/Limiter). Don't trust client IPs. Exponential backoff. Retry-After header.
+
+## Broken Authentication (OWASP API2:2023)
+- **What**: Bypassing auth mechanisms (JWT, sessions, API keys, OAuth).
+- **Why**: Enables impersonation (SolarWinds 2020, Facebook 2018 View As).
+- **JWT Structure**: header.payload.signature (HS256/RS256). Must verify sig, alg, exp.
+- **Detection**: `auth_scanner.py` tests none alg (`alg: none`), missing auth (new session), weak secrets.
+- **Attacks**: None alg bypass, alg confusion (RS256 as HS256), missing auth checks, weak secrets.
+- **Defenses**: Strong random secret, explicit algs (no 'none'), verify before trust. Short-lived tokens. `core/security.py`, `dependencies.py`.
+
+## SQL Injection (OWASP API1:2023, CWE-89)
+- **What**: Unescaped input alters SQL (e.g., `' OR 1=1--` bypasses WHERE).
+- **Why**: Data breaches (Equifax 2017, Canva 2019).
+- **Detection** (`sqli_scanner.py`):
+  - Error-based: Error signatures (MySQL 'sql syntax', Postgres 'pg_query').
+  - Boolean blind: True (`1=1`) vs false (`1=2`) response lengths.
+  - Time-based: SLEEP(5), pg_sleep(5), response time > baseline.
+- **Payloads** (`payloads.py`): Auth bypass, UNION SELECT, stacked (DROP TABLE).
+- **Defenses**: Parameterized queries/ORMs (SQLAlchemy `.filter()`). No string concat. Input validation. Least privilege DB.
+
+## IDOR/BOLA (OWASP API1:2023, CWE-639)
+- **What**: Access objects without ownership check (e.g., `/users/123` as user 124).
+- **Why**: #1 OWASP API Top 10. Scraping (Parler 70TB 2021, T-Mobile 37M 2022).
+- **Detection** (`idor_scanner.py`): Extract IDs (UUID/num), test 0/-1/9999, sequential patterns.
+- **Attacks**: ID enum (sequential), string manip ('admin'), UUID guessing.
+- **Defenses**: Always check `obj.owner_id == user.id`. UUIDs help but verify. Return 404 not 403. RLS in DB. `scan_service.py` example.
+
+## Relations & Standards
+- Chain: No rate limit → IDOR enum → Broken auth → SQLi → Breach.
+- OWASP API Top 10: API1 BOLA, API2 Auth, API4 Resource Consumption, API8 Misconfig.
+- MITRE: T1190 Public App, T1110 Brute Force.
+- Pitfalls: Trust unverified JWT payload, no exp check, ORM raw() concat, auth on writes only.
+
+*For full details, see 01-CONCEPTS.md. Test Qs: UUIDs don't fix IDOR (no ownership check); headers vs 429 enforcement; time delays without errors/len diff; JWT must reject 'none' alg.*
+
