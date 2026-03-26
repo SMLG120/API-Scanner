@@ -10,9 +10,10 @@ WORKDIR /app
 
 # Copy package files first (for layer caching)
 COPY frontend/package*.json ./
+COPY frontend/pnpm-lock.yaml ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies using npm (pnpm-lock.yaml will be read)
+RUN npm install
 
 # Copy application code (in dev this is overridden by volume mount)
 COPY frontend/ .
